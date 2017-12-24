@@ -6,10 +6,7 @@ Created on Dec 24, 2017
 
 import requests
 import json
-
-path = "/Ebooks/"
-
-url = 'http://10.11.99.1/documents/'
+import tempfile
 
 
 class RemarkableDirectory():
@@ -71,11 +68,10 @@ class Remarkable():
     def _getPathElements(self, path):
         return self._removeEmpty(path.split("/"))
 
-    def isDirectory(self, entry):
+    def _isDirectory(self, entry):
         return entry['Type'] == 'CollectionType'
     
-    def isFile(self, entry):
-        print(entry)
+    def _isFile(self, entry):
         return entry['Type'] == 'DocumentType'
     
     def _createDirEntry(self, element):
@@ -86,31 +82,66 @@ class Remarkable():
         fileTypeKey = 'fileType'
         if(fileTypeKey in element and element[fileTypeKey] != ''):
             name = name + "." + element[fileTypeKey]
-        return RemarkableDirectoryEntry(name, element['ID'])
+        return RemarkableFileEntry(name, element['ID'])
     
-    def getDirEntries(self, data):
+    def _getDirFromJson(self, data):
         remarkableDirectory = RemarkableDirectory()
         for element in data:
-            if self.isDirectory(element):
+            if self._isDirectory(element):
                 remarkableDirectory.appendDirectoryEntry(self._createDirEntry(element))
-            if self.isFile(element):
-                remarkableDirectory.appendDirectoryEntry(self._createFileEntry(element))
+            if self._isFile(element):
+                remarkableDirectory.appendFileEntry(self._createFileEntry(element))
                 
         return remarkableDirectory
-        
-    def readDir(self, path):
+    
+    def _readDirFromUri(self, uniqueId=None):
         baseUrl = 'http://10.11.99.1/documents/'
-        resp = requests.get(url=baseUrl)
+        url = baseUrl if uniqueId is None else baseUrl + uniqueId
+        resp = requests.get(url=url)
         data = json.loads(resp.text)
-        dirs = self.getDirEntries(data)
+        return self._getDirFromJson(data)
+    
+    def readFile(self, path):
+        pathElements = self._getPathElements(path)
+        dirElements = pathElements[:-1]
+        dirPath = "/" + "/".join(dirElements) + "/"
+        fileName = pathElements[len(pathElements) - 1]
+
+        directory = self.readDir(dirPath)
+        for file in directory.getFileEntries():
+            if(file.getName() == fileName):
+                return file
+        raise RuntimeError("Failed to find file: " + path)
+    
+    def downloadToPdf(self, path, targetPath):
+        file = self.readFile(path)
+        print(file.getName())
+        print(file.getUniqueId())
+        url = 'http://10.11.99.1/download/'+file.getUniqueId()+"/epub/"
+        resp = requests.get(url=url)
+        fp = open(targetPath, "wb")
+        fp.write(resp.content)
+        fp.close()
+    
+    def uploadFile(self, srcPath, targetName):
+        if not targetName.endswith((".epub", ".pdf")):
+            raise RuntimeError("Target file names have to be .epub or .pdf")
+        url = 'http://10.11.99.1/upload'
+        files = {'file': (targetName, open(srcPath, 'rb'))}
+
+        r = requests.post(url, files=files)
+        print(r.text)
+        if r.text != "Upload successfull":
+            raise RuntimeError("Failed to upload file: "+r.text)
+    
+    
+    def readDir(self, path):
+        dirs = self._readDirFromUri()
         for pathElement in self._getPathElements(path):
             found = False
             for directory in dirs.getDirectoryEntries():
                 if(directory.getName() == pathElement):
-                    resp = requests.get(url=baseUrl + "/" + directory.getUniqueId())
-                    data = json.loads(resp.text)
-                    data = json.loads(resp.text)
-                    dirs = self.getDirEntries(data)
+                    dirs = self._readDirFromUri(directory.getUniqueId())
                     found = True
                     break
             if not found:
@@ -118,8 +149,16 @@ class Remarkable():
         return dirs
 
 
-class RemarkeableFuse():
+class VirtualFileHandle:
     
+    def __init__(self, path, data):
+        self._fp = tempfile.TemporaryFile(mode='w+b')
+        self._fp.write(data);
+        self._fp.seek(0)
+
+
+class RemarkeableFuse():
+
     def __init__(self):
         self._remarkable = Remarkable()
 
@@ -134,6 +173,11 @@ class RemarkeableFuse():
             yield r
 
 
-fuse = RemarkeableFuse()
-for entry in fuse.readdir("/Ebooks/", None):
-    print (entry)
+remarkable = Remarkable()
+remarkable.uploadFile("d:/testfuse/test.epub", "test2.epub")
+#remarkable.downloadToPdf("/test.epub", "d:/testfuse/testdl.epub")
+
+#fuse = RemarkeableFuse()
+#print(fuse.readFile("/test.epub"))
+#for entry in fuse.readFile("/test.epub"):
+#    print (entry)
