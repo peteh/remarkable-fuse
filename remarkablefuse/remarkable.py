@@ -6,9 +6,8 @@ Created on Dec 24, 2017
 
 import requests
 import json
-import tempfile
+
 import logging
-import os
 
 logging.basicConfig(level=logging.DEBUG)
 LOG = logging.getLogger(__name__)
@@ -178,58 +177,20 @@ class Remarkable():
             fp.close()
 
 
-class VirtualFileHandle(tempfile.SpooledTemporaryFile):
-    
-    def __init__(self, remarkable, fileName):
-        super(VirtualFileHandle, self).__init__(mode='w+b')
-        self._fileName = fileName
-        self._remarkable = remarkable
-    
-    def close(self):
-        self.seek(0)
-        try:
-            self._remarkable.uploadFile(self, self._fileName)
-        finally:
-            tempfile.SpooledTemporaryFile.close(self)
-
-
-class RemarkeableFuse():
-
-    def __init__(self):
-        self._remarkable = Remarkable()
-
-    def create(self, path, mode, fi=None):
-        pathElements = self._remarkable._getPathElements(path)
-        if len(pathElements) != 1:
-            raise RuntimeError("Cannot create file out of root dir")
-        fileName = pathElements[0]
-        print(fileName)
-        LOG.debug("fuse create: " + path + " mode " + mode)
-        fh = VirtualFileHandle(self._remarkable, fileName)
-        return fh
-    
-    def readdir(self, path, fh):
-        LOG.debug("fuse readdir: %s" % (path))
-        remarkableDir = self._remarkable.readDir(path)
-
-        dirents = ['.', '..']
-        dirents.extend([entry.getName() for entry in remarkableDir.getDirectoryEntries()])
-        dirents.extend([entry.getName() for entry in remarkableDir.getFileEntries()])
-
-        for r in dirents:
-            yield r
-    
-    def write(self, path, buf, offset, fh):
-        LOG.debug("fuse write: " + path + " offset " + offset)
-        os.lseek(fh, offset, os.SEEK_SET)
-        return os.write(fh, buf)
-
 
 remarkable = Remarkable()
+import os
+print(os.lstat("/home/pete/"))
+import fusepy
+st = os.lstat("/home/pete/")
+d = dict((key, getattr(st, key)) for key in ('st_atime', 'st_ctime',
+             'st_gid', 'st_mode', 'st_mtime', 'st_nlink', 'st_size', 'st_uid'))
+
+print(d)
 # remarkable.uploadFileFromPath("d:/testfuse/test.epub", "test2.epub")
 # remarkable.downloadToPdf("/test2.epub", "d:/testfuse/testdl.epub")
 
-fuse = RemarkeableFuse()
+
 #fp = fuse.create("test.epub", "wb")
 #fdata = open("d:/testfuse/test.epub", "rb")
 #data = fdata.read()
