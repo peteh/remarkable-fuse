@@ -7,6 +7,11 @@ Created on Dec 24, 2017
 import requests
 import json
 import tempfile
+import logging
+import os
+
+logging.basicConfig(level=logging.DEBUG)
+LOG = logging.getLogger(__name__)
 
 
 class RemarkableDirectory():
@@ -61,7 +66,7 @@ class RemarkableFileEntry():
 
 
 class Remarkable():
-
+    
     def _removeEmpty(self, entries):
         return [entry for entry in entries if entry]
     
@@ -117,23 +122,29 @@ class Remarkable():
         file = self.readFile(path)
         print(file.getName())
         print(file.getUniqueId())
-        url = 'http://10.11.99.1/download/'+file.getUniqueId()+"/epub/"
+        url = 'http://10.11.99.1/download/' + file.getUniqueId() + "/epub/"
         resp = requests.get(url=url)
         fp = open(targetPath, "wb")
         fp.write(resp.content)
         fp.close()
     
-    def uploadFile(self, srcPath, targetName):
+    def uploadFile(self, fp, targetName):
         if not targetName.endswith((".epub", ".pdf")):
             raise RuntimeError("Target file names have to be .epub or .pdf")
         url = 'http://10.11.99.1/upload'
-        files = {'file': (targetName, open(srcPath, 'rb'))}
-
+        files = {'file': (targetName, fp)}
+        LOG.debug("Uploading")
         r = requests.post(url, files=files)
         print(r.text)
         if r.text != "Upload successfull":
-            raise RuntimeError("Failed to upload file: "+r.text)
-    
+            raise RuntimeError("Failed to upload file: " + r.text)
+        
+    def uploadFileFromPath(self, srcPath, targetName):
+        fp = open(srcPath, 'rb')
+        try:
+            self.uploadFile(fp, targetName)
+        finally:
+            fp.close()
     
     def readDir(self, path):
         dirs = self._readDirFromUri()
@@ -149,12 +160,19 @@ class Remarkable():
         return dirs
 
 
-class VirtualFileHandle:
+class VirtualFileHandle(tempfile.SpooledTemporaryFile):
     
-    def __init__(self, path, data):
-        self._fp = tempfile.TemporaryFile(mode='w+b')
-        self._fp.write(data);
-        self._fp.seek(0)
+    def __init__(self, remarkable, fileName):
+        super(VirtualFileHandle, self).__init__(mode='w+b')
+        self._fileName = fileName
+        self._remarkable = remarkable
+    
+    def close(self):
+        self.seek(0)
+        try:
+            self._remarkable.uploadFile(self, self._fileName)
+        finally:
+            tempfile.SpooledTemporaryFile.close(self)
 
 
 class RemarkeableFuse():
@@ -162,6 +180,16 @@ class RemarkeableFuse():
     def __init__(self):
         self._remarkable = Remarkable()
 
+    def create(self, path, mode, fi=None):
+        pathElements = self._remarkable._getPathElements(path)
+        if len(pathElements) != 1:
+            raise RuntimeError("Cannot create file out of root dir")
+        fileName = pathElements[0]
+        print(fileName)
+        LOG.debug("create: " + path + " mode " + mode)
+        fh = VirtualFileHandle(self._remarkable, fileName)
+        return fh
+    
     def readdir(self, path, fh):
         remarkableDir = self._remarkable.readDir(path)
 
@@ -171,13 +199,29 @@ class RemarkeableFuse():
 
         for r in dirents:
             yield r
+    
+    def write(self, path, buf, offset, fh):
+        os.lseek(fh, offset, os.SEEK_SET)
+        return os.write(fh, buf)
+    
+    def getattr(self, path, fh=None):
+        full_path = self._full_path(path)
+        st = os.lstat(full_path)
+        return dict((key, getattr(st, key)) for key in ('st_atime', 'st_ctime',
+                     'st_gid', 'st_mode', 'st_mtime', 'st_nlink', 'st_size', 'st_uid'))
 
 
 remarkable = Remarkable()
-remarkable.uploadFile("d:/testfuse/test.epub", "test2.epub")
-#remarkable.downloadToPdf("/test.epub", "d:/testfuse/testdl.epub")
+# remarkable.uploadFileFromPath("d:/testfuse/test.epub", "test2.epub")
+# remarkable.downloadToPdf("/test2.epub", "d:/testfuse/testdl.epub")
 
-#fuse = RemarkeableFuse()
-#print(fuse.readFile("/test.epub"))
-#for entry in fuse.readFile("/test.epub"):
+fuse = RemarkeableFuse()
+#fp = fuse.create("test.epub", "wb")
+#fdata = open("d:/testfuse/test.epub", "rb");
+#data = fdata.read()
+#fdata.close()
+#fp.write(data)
+#fp.close()
+print(remarkable.readFile("/test.epub"))
+# for entry in fuse.readFile("/test.epub"):
 #    print (entry)
