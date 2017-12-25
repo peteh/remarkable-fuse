@@ -105,6 +105,19 @@ class Remarkable():
         resp = requests.get(url=url)
         data = json.loads(resp.text)
         return self._getDirFromJson(data)
+
+    def readDir(self, path):
+        directory = self._readDirFromUri()
+        for pathElement in self._getPathElements(path):
+            found = False
+            for directory in directory.getDirectoryEntries():
+                if(directory.getName() == pathElement):
+                    directory = self._readDirFromUri(directory.getUniqueId())
+                    found = True
+                    break
+            if not found:
+                raise NotADirectoryError("Failed to load directory for path: " + path)
+        return directory
     
     def readFile(self, path):
         pathElements = self._getPathElements(path)
@@ -112,11 +125,14 @@ class Remarkable():
         dirPath = "/" + "/".join(dirElements) + "/"
         fileName = pathElements[len(pathElements) - 1]
 
-        directory = self.readDir(dirPath)
+        try: 
+            directory = self.readDir(dirPath)
+        except NotADirectoryError as e:
+            raise FileNotFoundError("Could not open path " + path) from e
         for file in directory.getFileEntries():
             if(file.getName() == fileName):
                 return file
-        raise RuntimeError("Failed to find file: " + path)
+        raise FileNotFoundError("Failed to find file: " + path)
     
     def downloadToPdf(self, path, targetPath):
         file = self.readFile(path)
@@ -133,8 +149,9 @@ class Remarkable():
             raise RuntimeError("Target file names have to be .epub or .pdf")
         url = 'http://10.11.99.1/upload'
         files = {'file': (targetName, fp)}
-        LOG.debug("Uploading")
+        LOG.debug("Uploading...")
         r = requests.post(url, files=files)
+        LOG.debug("Uploading finished")
         print(r.text)
         if r.text != "Upload successfull":
             raise RuntimeError("Failed to upload file: " + r.text)
@@ -145,19 +162,6 @@ class Remarkable():
             self.uploadFile(fp, targetName)
         finally:
             fp.close()
-    
-    def readDir(self, path):
-        dirs = self._readDirFromUri()
-        for pathElement in self._getPathElements(path):
-            found = False
-            for directory in dirs.getDirectoryEntries():
-                if(directory.getName() == pathElement):
-                    dirs = self._readDirFromUri(directory.getUniqueId())
-                    found = True
-                    break
-            if not found:
-                raise RuntimeError("Failed to load directory for path: " + path)
-        return dirs
 
 
 class VirtualFileHandle(tempfile.SpooledTemporaryFile):
@@ -186,11 +190,12 @@ class RemarkeableFuse():
             raise RuntimeError("Cannot create file out of root dir")
         fileName = pathElements[0]
         print(fileName)
-        LOG.debug("create: " + path + " mode " + mode)
+        LOG.debug("fuse create: " + path + " mode " + mode)
         fh = VirtualFileHandle(self._remarkable, fileName)
         return fh
     
     def readdir(self, path, fh):
+        LOG.debug("fuse readdir: %s" % (path))
         remarkableDir = self._remarkable.readDir(path)
 
         dirents = ['.', '..']
@@ -201,14 +206,9 @@ class RemarkeableFuse():
             yield r
     
     def write(self, path, buf, offset, fh):
+        LOG.debug("fuse write: " + path + " offset " + offset)
         os.lseek(fh, offset, os.SEEK_SET)
         return os.write(fh, buf)
-    
-    def getattr(self, path, fh=None):
-        full_path = self._full_path(path)
-        st = os.lstat(full_path)
-        return dict((key, getattr(st, key)) for key in ('st_atime', 'st_ctime',
-                     'st_gid', 'st_mode', 'st_mtime', 'st_nlink', 'st_size', 'st_uid'))
 
 
 remarkable = Remarkable()
@@ -222,6 +222,6 @@ fuse = RemarkeableFuse()
 #fdata.close()
 #fp.write(data)
 #fp.close()
-print(remarkable.readFile("/test.epub"))
+print(remarkable.readFile("/Ebooks/test.epub"))
 # for entry in fuse.readFile("/test.epub"):
 #    print (entry)
