@@ -1,7 +1,7 @@
 '''
 Created on Dec 24, 2017
 
-@author: HOFMANNP
+@author: pete
 '''
 
 import requests
@@ -177,16 +177,6 @@ class Remarkable():
             fp.close()
 
 
-
-remarkable = Remarkable()
-import os
-print(os.lstat("/home/pete/"))
-import fusepy
-st = os.lstat("/home/pete/")
-d = dict((key, getattr(st, key)) for key in ('st_atime', 'st_ctime',
-             'st_gid', 'st_mode', 'st_mtime', 'st_nlink', 'st_size', 'st_uid'))
-
-print(d)
 # remarkable.uploadFileFromPath("d:/testfuse/test.epub", "test2.epub")
 # remarkable.downloadToPdf("/test2.epub", "d:/testfuse/testdl.epub")
 
@@ -197,6 +187,6 @@ print(d)
 #fdata.close()
 #fp.write(data)
 #fp.close()
-print(remarkable.isDirectory("/Ebooks"))
+#print(remarkable.isDirectory("/Ebooks"))
 # for entry in fuse.readFile("/test.epub"):
 #    print (entry)

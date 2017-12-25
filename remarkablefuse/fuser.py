@@ -7,11 +7,10 @@ import sys
 import errno
 import shutil
 
-#from fuse import FUSE, FuseOSError, Operations
+from fusepy import FUSE, FuseOSError, Operations
 
 
-#class Passthrough(Operations):
-class Passthrough():
+class Passthrough(Operations):
     def __init__(self, root):
         self.root = root
 
@@ -131,15 +130,13 @@ class Passthrough():
 
 
 def main(mountpoint, root):
-#    FUSE(Passthrough(root), mountpoint, nothreads=True, foreground=True)
-    fuse = Passthrough(root)
-    
-    entries = fuse.readdir("/", None)
-    for entry in entries:
-        print(entry)
+    FUSE(Passthrough(root), mountpoint, nothreads=True, foreground=True)
     
     
     
     
 if __name__ == '__main__':
     main("/mnt", "d:/testfuse/")
+    
+    
+    
