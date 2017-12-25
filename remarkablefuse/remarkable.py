@@ -134,6 +134,20 @@ class Remarkable():
                 return file
         raise FileNotFoundError("Failed to find file: " + path)
     
+    def isFile(self, path):
+        try: 
+            self.readFile(path)
+            return True
+        except(FileNotFoundError):
+            return False
+    
+    def isDirectory(self, path):
+        try: 
+            self.readDir(path)
+            return True
+        except(NotADirectoryError):
+            return False
+        
     def downloadToPdf(self, path, targetPath):
         file = self.readFile(path)
         print(file.getName())
@@ -217,11 +231,11 @@ remarkable = Remarkable()
 
 fuse = RemarkeableFuse()
 #fp = fuse.create("test.epub", "wb")
-#fdata = open("d:/testfuse/test.epub", "rb");
+#fdata = open("d:/testfuse/test.epub", "rb")
 #data = fdata.read()
 #fdata.close()
 #fp.write(data)
 #fp.close()
-print(remarkable.readFile("/Ebooks/test.epub"))
+print(remarkable.isDirectory("/Ebooks"))
 # for entry in fuse.readFile("/test.epub"):
 #    print (entry)
